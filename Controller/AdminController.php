@@ -19,7 +19,9 @@ namespace JavierEguiluz\Bundle\EasyAdminBundle\Controller;
 
 use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Mapping\ClassMetadataInfo;
+use Doctrine\ORM\EntityRepository;
 use Symfony\Component\Form\Form;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -33,7 +35,7 @@ use Pagerfanta\Adapter\DoctrineORMAdapter;
  */
 class AdminController extends Controller
 {
-    protected $allowedActions = array('list', 'edit', 'new', 'show', 'search', 'delete');
+    protected $allowedActions = array('list', 'edit', 'new', 'show', 'search', 'delete', 'toggle');
     protected $config;
     protected $entity = array();
 
@@ -268,6 +270,39 @@ class AdminController extends Controller
     }
 
     /**
+     * Changes the value of a boolean entity property. This method is used for
+     * the boolean toggle switches displayed in the backend.
+     */
+    protected function toggleAction()
+    {
+        if (!$entity = $this->em->getRepository($this->entity['class'])->find($this->request->query->get('id'))) {
+            throw new \Exception('The entity does not exist.');
+        }
+
+        $propertyName = $this->request->query->get('property');
+        $propertyMetadata = $this->entity['list']['fields'][$propertyName];
+
+        if (!isset($this->entity['list']['fields'][$propertyName]) || 'toggle' != $propertyMetadata['dataType']) {
+            throw new \Exception(sprintf('The "%s" property is not a switchable toggle.', $propertyName));
+        }
+
+        if (!$propertyMetadata['canBeSet']) {
+            throw new \Exception(sprintf('It\'s not possible to toggle the value of the "%s" boolean property of the "%s" entity.', $propertyName, $this->entity['name']));
+        }
+
+        $newValue = $this->request->query->getBoolean('newValue');
+        if (null !== $setter = $propertyMetadata['setter']) {
+            $entity->{$setter}($newValue);
+        } else {
+            $entity->{$propertyName} = $newValue;
+        }
+
+        $this->em->flush();
+
+        return new Response((string) $newValue);
+    }
+
+    /**
      * Allows applications to modify the entity associated with the item being
      * edited before persisting it.
      *
@@ -373,15 +408,17 @@ class AdminController extends Controller
 
         foreach ($entityProperties as $name => $metadata) {
             $formFieldOptions = array();
+            //if ('association' === $metadata['fieldType'] && in_array($metadata['associationType'], array(ClassMetadataInfo::ONE_TO_MANY, ClassMetadataInfo::MANY_TO_MANY))) {
+            //if ('association' === $metadata['type'] && in_array($metadata['associationType'], array(ClassMetadataInfo::ONE_TO_MANY, ClassMetadataInfo::MANY_TO_MANY))) {
+            //    continue;
+            //}
 
-            if (array_key_exists('association', $metadata) && in_array($metadata['associationType'], array(ClassMetadataInfo::ONE_TO_MANY, ClassMetadataInfo::MANY_TO_MANY))) {
-                continue;
-            }
 
             if ('collection' === $metadata['type']) {
                 $formFieldOptions = array(
                     'allow_add' => true,
                     'allow_delete' => true,
+                    'cascade_validation' => true
                 );
 
                 if (version_compare(\Symfony\Component\HttpKernel\Kernel::VERSION, '2.5.0', '>=')) {
@@ -389,7 +426,28 @@ class AdminController extends Controller
                 }
             }
 
+            if (isset($metadata["options"])) {
+                if (isset($metadata["options"]["type"])) {
+                    $metadata["options"]["type"] = new $metadata["options"]["type"]();
+                    $metadata["options"]["options"] = array("label" => false);
+                }
+                if (isset($metadata["options"]["minYear"])) {
+                    $metadata["options"]["years"] = range($metadata["options"]["minYear"], date("Y")); 
+                    unset($metadata["options"]["minYear"]);
+                }
+                $formFieldOptions = array_merge($formFieldOptions, $metadata["options"]);
+            }
+
+            if (isset($metadata["repositoryMethod"])) {
+                $formFieldOptions["query_builder"] = 
+                    function(EntityRepository $er) use($metadata){
+                        return call_user_func( array( $er, $metadata['repositoryMethod'] ) );
+                    }   
+                ;   
+            } 
+
             $form->add($name, $metadata['type'], $formFieldOptions);
+            //$form->add($name, $metadata['fieldType'], $formFieldOptions);
         }
 
         return $form->getForm();
