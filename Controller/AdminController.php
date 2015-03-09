@@ -445,9 +445,13 @@ class AdminController extends Controller
                     }   
                 ;   
             } 
+            
+            if(isset($formFieldOptions["default"]))
+            {
+                unset($formFieldOptions["default"]);
+            }
 
             $form->add($name, $metadata['type'], $formFieldOptions);
-            //$form->add($name, $metadata['fieldType'], $formFieldOptions);
         }
 
         return $form->getForm();
