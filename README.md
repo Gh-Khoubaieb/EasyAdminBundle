@@ -1,6 +1,11 @@
 EasyAdmin
 =========
 
+
+# Hi, This repo is not maintained, I invite you to check the official repo https://github.com/javiereguiluz/EasyAdminBundle
+
+
+
 <img src="https://cloud.githubusercontent.com/assets/73419/5748254/e0697de0-9c3e-11e4-8b42-792a25538676.png" alt="EasyAdmin creates Symfony Backends" title="EasyAdmin" align="right" />
 
 EasyAdmin lets you create administration backends for Symfony applications
